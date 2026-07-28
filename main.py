@@ -56,7 +56,7 @@ def get_evening_menu_recommendation(image_bytes):
     # Google Search Grounding 도구 활성화
     model = genai.GenerativeModel(
         'gemini-1.5-flash',
-        tools=[{'google_search': {}}]
+        
     )
 
     prompt = """
