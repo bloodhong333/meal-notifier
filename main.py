@@ -1,12 +1,14 @@
 import os
 import json
-import base64
 import requests
+import io
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
-import io
-import google.generativeai as genai
+
+# 최신 구글 AI SDK 사용
+from google import genai
+from google.genai import types
 
 # ==========================================
 # 1. 환경 변수 설정
@@ -48,16 +50,11 @@ def download_latest_menu_image():
     return file_stream.read()
 
 # ==========================================
-# 3. Gemini AI 식단 분석 및 저녁 메뉴 추천 (Search Grounding 적용)
+# 3. Gemini AI 식단 분석 및 저녁 메뉴 추천
 # ==========================================
 def get_evening_menu_recommendation(image_bytes):
-    genai.configure(api_key=GEMINI_API_KEY)
-    
-    # Google Search Grounding 도구 활성화
-    model = genai.GenerativeModel(
-        'gemini-2.0-flash',
-        
-    )
+    # 최신 SDK 방식으로 클라이언트 생성
+    client = genai.Client(api_key=GEMINI_API_KEY)
 
     prompt = """
 너는 쌍둥이를 키우는 요리 초보 부모를 돕는 친절하고 실용적인 식단 관리 AI 도우미야.
@@ -71,7 +68,7 @@ def get_evening_menu_recommendation(image_bytes):
 3. 보통의 재료 활용: 대형마트나 집 앞 슈퍼에서 쉽게 구하는 일반적인 식재료 사용할 것.
 4. 아이들 선호도 최고 메뉴: 유아/어린이가 호불호 없이 잘 먹기로 검증된 메뉴.
 5. 냉동/반가공품 적극 활용 OK: 돈가스, 냉동 떡갈비, 시판 소스, 만두 등 냉동제품/밀키트 활용 레시피 적극 환영.
-6. 실제 참고 URL 첨부: Google 검색을 활용하여 추천한 메뉴를 쉽게 따라 할 수 있는 유튜브 영상 링크나 네이버 블로그 링크를 반드시 첨부할 것.
+6. 실제 참고 URL 첨부: 추천한 메뉴를 쉽게 따라 할 수 있는 유튜브 영상 링크나 네이버 블로그 링크를 첨부할 것.
 7. 어른 연계 가능성(선택): 아이용으로 먼저 조리 후 고춧가루/청양고추/스리라차 등 어른용 고명을 추가해 함께 먹을 수 있다면 팁으로 첨부.
 
 [출력 형식]
@@ -92,12 +89,17 @@ def get_evening_menu_recommendation(image_bytes):
 👨‍👩‍👧‍👦 어른을 위한 한 끗 팁: (어른용 양념 추가 팁)
 """
 
-    image_part = {
-        "mime_type": "image/jpeg",
-        "data": image_bytes
-    }
+    # 이미지 파트 포맷 변환
+    image_part = types.Part.from_bytes(
+        data=image_bytes,
+        mime_type="image/jpeg",
+    )
 
-    response = model.generate_content([prompt, image_part])
+    # 최신 SDK 방식으로 모델 호출 (gemini-2.5-flash)
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=[prompt, image_part],
+    )
     return response.text
 
 # ==========================================
