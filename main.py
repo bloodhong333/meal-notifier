@@ -2,9 +2,11 @@ import os
 import json
 import requests
 import io
+import time
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
+from google.genai.errors import APIError
 
 # 최신 구글 AI SDK 사용
 from google import genai
@@ -100,6 +102,21 @@ def get_evening_menu_recommendation(image_bytes):
         model="gemini-2.0-flash",
         contents=[prompt, image_part],
     )
+
+    for attempt in range(3):
+        try:
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=[prompt, image_part],
+            )
+            return response.text
+        except APIError as e:
+            if "429" in str(e) and attempt < 2:
+                print(f"⚠️ API 요청 제한(429) 발생. 30초 후 재시도합니다... ({attempt + 1}/3)")
+                time.sleep(30)
+            else:
+                raise e
+                
     return response.text
 
 # ==========================================
