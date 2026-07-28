@@ -99,7 +99,7 @@ def get_evening_menu_recommendation(image_bytes):
 
     # 최신 SDK 방식으로 모델 호출 (gemini-2.0-flash)
     response = client.models.generate_content(
-        model="gemini-2.0-flash",
+        model="gemini-1.5-flash",
         contents=[prompt, image_part],
     )
 
