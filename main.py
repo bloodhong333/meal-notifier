@@ -113,7 +113,6 @@ def get_evening_menu_recommendation(image_bytes):
 - 두 메시지 사이에 정확히 [MSG_SPLIT] 라는 구분자를 넣어줄 것.
 - 1번째 메시지: 어린이집 식단 요약 (200자 내외)
 - 2번째 메시지: 추천 저녁 메뉴, 재료, 상세 조리 팁, 레시피 검색어 (600~750자 내외)
-- 답변을 중간에 끊지 말고 끝까지 완성해서 출력해 줘.
 
 [출력 양식]
 📍 내일({tomorrow_str} {tomorrow_day_kr}) 어린이집 식단
