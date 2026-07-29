@@ -17,7 +17,7 @@ GOOGLE_DRIVE_FOLDER_ID = os.environ.get("GOOGLE_DRIVE_FOLDER_ID")
 GOOGLE_SERVICE_ACCOUNT_JSON = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
 KAKAO_REST_API_KEY = os.environ.get("KAKAO_REST_API_KEY")
 
-# 💡 내 Refresh Token 및 아내 Refresh Token 설정
+# 내 Refresh Token 및 아내 Refresh Token 설정
 KAKAO_REFRESH_TOKEN_ME = os.environ.get("KAKAO_REFRESH_TOKEN")  # 본인 토큰
 KAKAO_REFRESH_TOKEN_WIFE = os.environ.get(
     "KAKAO_REFRESH_TOKEN_WIFE"
@@ -133,8 +133,9 @@ def get_evening_menu_recommendation(image_bytes):
 • 블로그: (추천 메뉴 + 유아식 레시피 검색어)
 """
 
+    # 공식 지원 모델인 gemini-2.0-flash 사용
     response = client.models.generate_content(
-        model="gemini-3.6-flash",  # Gemini 모델명
+        model="gemini-3.6-flash",
         contents=[
             types.Part.from_bytes(
                 data=image_bytes,
@@ -151,7 +152,7 @@ def get_evening_menu_recommendation(image_bytes):
 
 
 # ==========================================
-# 4. 카카오톡 메시지 전송 (다중 사용자 지원)
+# 4. 카카오톡 메시지 전송 (2명 전송 로직)
 # ==========================================
 def get_kakao_access_token(refresh_token):
     """지정한 Refresh Token으로 새로운 Access Token을 발급받습니다."""
@@ -170,8 +171,7 @@ def get_kakao_access_token(refresh_token):
 
 
 def send_kakao_message(text_message, refresh_token, user_label="사용자"):
-    """특정 대상(Refresh Token 주인)에게 메시지를 전송합니다."""
-    # 카카오톡 1,000자 제한 방지 안전장치
+    """특정 대상에게 메시지를 전송합니다."""
     if len(text_message) > 950:
         text_message = (
             text_message[:950]
@@ -201,24 +201,23 @@ def send_kakao_message(text_message, refresh_token, user_label="사용자"):
 
         response = requests.post(url, headers=headers, data=payload)
         if response.status_code == 200:
-            print(f"  ✅ [{user_label}] 카카오톡 메시지 전송 성공!")
+            print(f"   ✅ [{user_label}] 카카오톡 메시지 전송 성공!")
         else:
             print(
-                f"  ❌ [{user_label}] 카카오톡 전송 실패"
+                f"   ❌ [{user_label}] 카카오톡 전송 실패"
                 f" ({response.status_code}): {response.text}"
             )
     except Exception as e:
-        print(f"  ❌ [{user_label}] 전송 중 오류 발생: {e}")
+        print(f"   ❌ [{user_label}] 전송 중 오류 발생: {e}")
 
 
 def broadcast_messages(message_list):
-    """등록된 모든 대상에게 메시지 목록을 전송합니다."""
-    # 전송할 대상 목록 (라벨, REFRESH_TOKEN)
+    """본인과 아내에게 메시지를 모두 전송합니다."""
     targets = [("본인", KAKAO_REFRESH_TOKEN_ME), ("아내", KAKAO_REFRESH_TOKEN_WIFE)]
 
     for label, token in targets:
         if not token:
-            print(f"⚠️ [{label}]의 REFRESH_TOKEN 환경 변수가 설정되어 있지 않아 건너땁니다.")
+            print(f"\n⚠️ [{label}]의 REFRESH_TOKEN 환경 변수가 설정되어 있지 않아 건너땁니다.")
             continue
 
         print(f"\n📩 [{label}]에게 메세지 전송 시작...")
@@ -246,7 +245,7 @@ if __name__ == "__main__":
         else:
             messages = [recommendation]
 
-        # 본인 및 아내에게 메세지 일괄 전송
+        # 본인 및 아내에게 메세지 전송
         print("3. 카카오톡 메시지 전송 중...")
         broadcast_messages(messages)
 
