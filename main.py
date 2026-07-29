@@ -2,6 +2,7 @@ import os
 import io
 import json
 import time
+import re
 import base64
 import requests
 from datetime import datetime, timedelta, timezone
@@ -71,6 +72,7 @@ def get_evening_menu_recommendation(image_bytes):
     tomorrow_kst = now_kst + timedelta(days=1)
     
     today_str = now_kst.strftime("%Y년 %m월 %d일")
+    tomorrow_day_num = tomorrow_kst.day
     tomorrow_str = tomorrow_kst.strftime("%m월 %d일")
     tomorrow_day_kr = ["월", "화", "수", "목", "금", "토", "일"][tomorrow_kst.weekday()]
 
@@ -78,41 +80,38 @@ def get_evening_menu_recommendation(image_bytes):
     base64_image = base64.b64encode(image_bytes).decode('utf-8')
 
     prompt = f"""
-너는 쌍둥이를 키우는 요리 초보 부모를 돕는 친절하고 실용적인 식단 관리 AI 도우미야.
+너는 식단표 이미지에서 정확한 정보를 추출하는 OCR 전문가이자 요리 도우미야.
 
-[현재 기준 정보]
-• 오늘 날짜: {today_str}
-• 분석할 내일 날짜: **{tomorrow_str}({tomorrow_day_kr})**
+[가장 중요한 임무]
+이미지 형태의 월간 식단표 표에서 숫자 **'{tomorrow_day_num}'** 또는 **'{tomorrow_day_num}({tomorrow_day_kr})'** 표시가 된 날짜 칸을 매우 신중하게 찾아라.
+해당 칸에 적힌 실제 텍스트만 정확하게 읽어서 [점심]과 [오후 간식] 항목을 기재해라. 절대로 다른 날짜의 메뉴를 적거나 존재하지 않는 메뉴를 지어내지 마라!
 
-전달받은 어린이집 식단표 이미지에서 **{tomorrow_str}({tomorrow_day_kr})** 칸을 찾아 [점심 메뉴]와 [오후 간식]을 분석하고, 내일 저녁으로 준비할 추천 식단을 작성해줘.
+[분석 기준 날짜]
+• 오늘: {today_str}
+• 분석할 내일 날짜: **{tomorrow_day_num}일 ({tomorrow_day_kr}요일)**
 
-⚠️ [최우선 절대 규칙]
-1. 이미지 분석 과정, 추론 단계, 생각하는 과정 등 서론 및 혼잣말은 절대로 출력하지 마!
-2. 아래 [출력 형식]에 작성된 템플릿 그대로만 결과물을 출력해라.
-
-[저녁 식단 추천 원칙]
-1. 점심/간식 중복 절대 제외: 어린이집 점심 및 간식에 나온 주재료, 국 종류, 메인 요리와 중복되지 않을 것.
-2. 조리 편의성 극대화: 15~20분 내로 쉽게 조리할 수 있는 메뉴일 것.
-3. 선호도 최고 메뉴: 유아/어린이가 호불호 없이 잘 먹는 메뉴.
-4. 냉동/반가공품 적극 활용 OK: 돈가스, 떡갈비, 만두 등 활용 레시피 환영.
+[작성 가이드]
+1. 식단표에서 {tomorrow_day_num}일({tomorrow_day_kr}) 칸의 [점심] 메뉴와 [간식] 메뉴를 있는 그대로 옮겨 적는다.
+2. 해당 점심/간식과 주재료(돼지고기, 닭고기, 두부, 국수 등)가 겹치지 않는 간단하고 선호도 높은 초간단 추천 저녁 메뉴를 작성한다.
+3. 생각 과정이나 사족은 적지 말고, 지정된 [출력 형식]만 답변해라.
 
 [출력 형식]
 📍 내일({tomorrow_str} {tomorrow_day_kr}) 어린이집 식단
-• 점심: (식단표 점심 메뉴)
-• 간식: (식단표 간식 메뉴)
+• 점심: (해당 날짜 칸의 실제 점심 메뉴)
+• 간식: (해당 날짜 칸의 실제 간식 메뉴)
 
 💡 추천 저녁 메뉴: [메뉴 이름]
 • 이유: 점심/간식과 겹치지 않고 아이들이 좋아하는 성공 보장 메뉴!
-• 핵심 재료: (시판/냉동 재료 포함 간단한 재료)
+• 핵심 재료: (간단한 식재료)
 • 초간단 조리 팁 (15분 컷):
   1. ...
   2. ...
 
 🎬 추천 레시피 참고:
-• 📺 유튜브: (유튜브 검색어 또는 관련 링크)
-• 📝 블로그: (블로그 검색어 또는 관련 링크)
+• 📺 유튜브: (유튜브 레시피 검색어)
+• 📝 블로그: (네이버 블로그 레시피 검색어)
 
-👨‍👩‍👧‍👦 어른을 위한 한 끗 팁: (어른용 양념 추가 팁)
+👨‍👩‍👧‍👦 어른을 위한 한 끗 팁: (어른용 고명/양념 추가 팁)
 """
 
     for attempt in range(3):
@@ -136,7 +135,12 @@ def get_evening_menu_recommendation(image_bytes):
                 temperature=0.1,
                 max_tokens=1024,
             )
-            return completion.choices[0].message.content
+            raw_content = completion.choices[0].message.content
+            
+            # <think>...</think> 태그 제거
+            clean_content = re.sub(r'<think>.*?</think>', '', raw_content, flags=re.DOTALL).strip()
+            return clean_content
+
         except Exception as e:
             if attempt < 2:
                 print(f"⚠️ API 요청 중 오류 발생 ({e}). 10초 후 재시도합니다... ({attempt + 1}/3)")
