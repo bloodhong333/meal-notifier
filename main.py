@@ -76,28 +76,27 @@ def get_evening_menu_recommendation(image_bytes):
     client = genai.Client(api_key=GEMINI_API_KEY)
 
     prompt = f"""
-너는 식단표 이미지에서 정확한 메뉴를 읽어내고, 쌍둥이를 키우는 초보 부모를 돕는 친절한 식단 추천 AI 도우미야.
+식단표 이미지에서 **{tomorrow_day_num}일({tomorrow_day_kr})** 칸의 [점심] 및 [오후 간식] 메뉴를 읽고, 저녁 식단 추천 메시지를 완성해줘.
 
-전달받은 식단표 이미지에서 **{tomorrow_day_num}일({tomorrow_day_kr})** 칸에 있는 정확한 [점심] 및 [오후 간식] 메뉴를 읽어줘.
+⚠️ [작성 규칙 - 매우 중요]
+- 답변이 중간에 끊기지 않도록 전체 분량을 300자~400자 이내로 핵심만 깔끔하게 마무리할 것.
+- 인사말이나 개요 문구는 쓰지 말 것.
 
-⚠️ [카카오톡 전송 글자 수 제한 규칙 - 매우 중요]
-전체 답변을 공백 포함 **600자 이내**로 작성해라. 불필요한 인사말이나 서론은 삭제하고 핵심만 작성해라.
-
-[출력 형식]
+[출력 양식]
 📍 내일({tomorrow_str} {tomorrow_day_kr}) 어린이집 식단
-• 점심: (해당 날짜 칸의 점심 메뉴)
-• 간식: (해당 날짜 칸의 간식 메뉴)
+• 점심: (점심 메뉴 전체)
+• 간식: (간식 메뉴 전체)
 
 💡 추천 저녁: [메뉴 이름]
-• 이유: 점심/간식과 겹치지 않고 아이들이 좋아하는 성공 보장 메뉴!
-• 핵심 재료: (시판/간편 재료 포함 간단 재료)
-• 초간단 조리 팁 (15분 컷):
-  1. ...
-  2. ...
+• 이유: (점심/간식과 안 겹치고 간단함)
+• 재료: (핵심 재료)
+• 조리 팁:
+ 1. (간단 요약)
+ 2. (간단 요약)
 
-🎬 추천 레시피 참고:
-• 📺 유튜브: (관련 유튜브 레시피 검색어)
-• 📝 블로그: (관련 블로그 레시피 검색어)
+🎬 참고 검색어:
+• 유튜브: (검색어)
+• 블로그: (검색어)
 """
 
     response = client.models.generate_content(
@@ -110,7 +109,7 @@ def get_evening_menu_recommendation(image_bytes):
             prompt
         ],
         config=types.GenerateContentConfig(
-            max_output_tokens=700,
+            max_output_tokens=2000,  # 넉넉하게 늘려 답변이 중간에 잘리지 않게 함
             temperature=0.2
         )
     )
