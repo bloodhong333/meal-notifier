@@ -193,15 +193,17 @@ if __name__ == "__main__":
         print(recommendation)
         print("----------------------\n")
         
-        # [MSG_SPLIT] 구분자로 메시지 분할
+        # [MSG_SPLIT] 구분자로 메시지를 2개로 나누어 각각 전송
         if "[MSG_SPLIT]" in recommendation:
             messages = recommendation.split("[MSG_SPLIT]")
             for msg in messages:
-                if msg.strip():
-                    send_kakao_message(msg.strip())
+                clean_msg = msg.strip()
+                if clean_msg:
+                    # 각 메시지가 900자를 넘지 않는지 확인 후 전송
+                    send_kakao_message(clean_msg[:900])
         else:
-            # 구분자가 없을 경우 통째로 전송
-            send_kakao_message(recommendation)
+            # 구분자가 없을 경우 900자 한도로 통째 전송
+            send_kakao_message(recommendation[:900])
             
     except Exception as e:
         print(f"❌ 오류 발생: {e}")
