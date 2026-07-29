@@ -100,7 +100,7 @@ def get_evening_menu_recommendation(image_bytes):
     for attempt in range(3):
         try:
             response = client.models.generate_content(
-                model="gemini-2.0-flash",
+                model="gemini-2.0-flash-lite",
                 contents=[prompt, image_part],
             )
             return response.text
