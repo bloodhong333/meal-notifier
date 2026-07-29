@@ -1,49 +1,38 @@
 import os
 import io
+import json
 import time
 import base64
 import requests
 from groq import Groq
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
+from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 
 # ==========================================
-# 1. 환경 변수 설정
+# 1. 환경 변수 설정 (등록하신 Secrets 이름과 동일)
 # ==========================================
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
-KAKAO_ACCESS_TOKEN = os.environ.get("KAKAO_ACCESS_TOKEN")
-GOOGLE_REFRESH_TOKEN = os.environ.get("GOOGLE_REFRESH_TOKEN")
-GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
-GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
-DRIVE_FOLDER_ID = os.environ.get("DRIVE_FOLDER_ID")  # 구글 드라이브 식단표 폴더 ID
+GOOGLE_DRIVE_FOLDER_ID = os.environ.get("GOOGLE_DRIVE_FOLDER_ID")
+GOOGLE_SERVICE_ACCOUNT_JSON = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
+KAKAO_REST_API_KEY = os.environ.get("KAKAO_REST_API_KEY")
+KAKAO_REFRESH_TOKEN = os.environ.get("KAKAO_REFRESH_TOKEN")
 
 # ==========================================
 # 2. Google Drive에서 식단표 이미지 다운로드
 # ==========================================
 def get_latest_menu_image():
-    """
-    Google Drive API를 사용하여 특정 폴더 내 가장 최근 추가된 식단표 이미지를 가져옵니다.
-    """
     print("1. 구글 드라이브에서 최신 식단표 이미지 다운로드 중...")
     
-    creds = Credentials(
-        token=None,
-        refresh_token=GOOGLE_REFRESH_TOKEN,
-        token_uri="https://oauth2.googleapis.com/token",
-        client_id=GOOGLE_CLIENT_ID,
-        client_secret=GOOGLE_CLIENT_SECRET
-    )
+    # 서비스 계정 JSON 문자열 로드
+    service_account_info = json.loads(GOOGLE_SERVICE_ACCOUNT_JSON)
+    scopes = ['https://www.googleapis.com/auth/drive.readonly']
+    creds = Credentials.from_service_account_info(service_account_info, scopes=scopes)
     
-    if not creds.valid and creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-
     service = build('drive', 'v3', credentials=creds)
 
     # 폴더 내 이미지 파일 검색 (최신순 1개)
-    query = f"'{DRIVE_FOLDER_ID}' in parents and mimeType contains 'image/' and trashed = false"
+    query = f"'{GOOGLE_DRIVE_FOLDER_ID}' in parents and mimeType contains 'image/' and trashed = false"
     results = service.files().list(
         q=query,
         orderBy="createdTime desc",
@@ -73,9 +62,6 @@ def get_latest_menu_image():
 # 3. Groq AI (Llama 3.2 Vision) 식단 분석 및 추천
 # ==========================================
 def get_evening_menu_recommendation(image_bytes):
-    """
-    Groq API를 사용하여 식단표 이미지를 분석하고 저녁 메뉴를 추천합니다.
-    """
     print("2. Groq AI(Llama 3.2 Vision) 저녁 식단 분석 및 추천 중...")
     
     client = Groq(api_key=GROQ_API_KEY)
@@ -144,23 +130,36 @@ def get_evening_menu_recommendation(image_bytes):
                 raise e
 
 # ==========================================
-# 4. 카카오톡 나에게 메시지 보내기
+# 4. 카카오톡 액세스 토큰 갱신 및 메시지 발송
 # ==========================================
+def get_kakao_access_token():
+    """리프레시 토큰으로 새로운 액세스 토큰을 발급받습니다."""
+    url = "https://kauth.kakao.com/oauth/token"
+    data = {
+        "grant_type": "refresh_token",
+        "client_id": KAKAO_REST_API_KEY,
+        "refresh_token": KAKAO_REFRESH_TOKEN
+    }
+    response = requests.post(url, data=data)
+    result = response.json()
+    if "access_token" in result:
+        return result["access_token"]
+    else:
+        raise Exception(f"카카오 토큰 갱신 실패: {result}")
+
 def send_kakao_message(text_message):
-    """
-    카카오톡 나에게 보내기 API를 이용해 최종 분석된 저녁 추천 메시지를 전송합니다.
-    """
     print("3. 카카오톡 메시지 전송 중...")
     
+    access_token = get_kakao_access_token()
     url = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
     headers = {
-        "Authorization": f"Bearer {KAKAO_ACCESS_TOKEN}"
+        "Authorization": f"Bearer {access_token}"
     }
     
     payload = {
         "template_object": f"""{{
             "object_type": "text",
-            "text": {repr(text_message)},
+            "text": {json.dumps(text_message, ensure_ascii=False)},
             "link": {{
                 "web_url": "https://www.google.com",
                 "mobile_web_url": "https://www.google.com"
@@ -175,20 +174,17 @@ def send_kakao_message(text_message):
         print(f"❌ 카카오톡 전송 실패 ({response.status_code}): {response.text}")
 
 # ==========================================
-# 5. 메인 실행 함수
+# 5. 메인 실행
 # ==========================================
 if __name__ == "__main__":
     try:
-        # 1. 드라이브에서 식단표 이미지 가져오기
         img_data = get_latest_menu_image()
-        
-        # 2. AI 식단 추천 받아오기
         recommendation = get_evening_menu_recommendation(img_data)
+        
         print("\n--- [AI 추천 결과] ---")
         print(recommendation)
         print("----------------------\n")
         
-        # 3. 카카오톡으로 전송하기
         send_kakao_message(recommendation)
         
     except Exception as e:
