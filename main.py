@@ -90,8 +90,10 @@ def get_evening_menu_recommendation(image_bytes):
    - 밤에 자극적이거나 부담을 주어 수면에 방해되는 메뉴는 제외할 것.
 
 ⚠️ [작성 규칙 - 매우 중요]
-- 답변이 중간에 잘리지 않도록 공백 포함 500자~700자 이내로 작성할 것.
-- 인사말, 서론, 개요 문구는 제외하고 지정된 [출력 양식]대로만 답변할 것.
+- 전체 메시지를 2개의 카카오톡 메시지로 나누어 보낼 예정임.
+- 두 메시지 사이에 정확히 [MSG_SPLIT] 라는 구분자를 넣어줄 것.
+- 1번째 메시지: 어린이집 식단 요약 (200자 내외)
+- 2번째 메시지: 추천 저녁 메뉴, 재료, 상세 조리 팁, 어른용 변형 팁, 레시피 검색어 (500~700자 내외)
 
 [출력 양식]
 📍 내일({tomorrow_str} {tomorrow_day_kr}) 어린이집 식단
@@ -105,6 +107,7 @@ def get_evening_menu_recommendation(image_bytes):
 • 조리 팁:
  1. (15~20분 컷 간단 조리 순서)
  2. (간단 조리 순서)
+• 어른용 팁: (어른이 함께 먹을 때 약간의 양념/재료 추가 팁)
 
 🎬 참고 검색어:
 • 유튜브: (추천 메뉴 + 유아식 레시피 검색어)
@@ -190,8 +193,16 @@ if __name__ == "__main__":
         print(recommendation)
         print("----------------------\n")
         
-        send_kakao_message(recommendation)
-        
+        # [MSG_SPLIT] 구분자로 메시지 분할
+        if "[MSG_SPLIT]" in recommendation:
+            messages = recommendation.split("[MSG_SPLIT]")
+            for msg in messages:
+                if msg.strip():
+                    send_kakao_message(msg.strip())
+        else:
+            # 구분자가 없을 경우 통째로 전송
+            send_kakao_message(recommendation)
+            
     except Exception as e:
         print(f"❌ 오류 발생: {e}")
         exit(1)
