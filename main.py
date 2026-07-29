@@ -4,6 +4,7 @@ import json
 import time
 import base64
 import requests
+from datetime import datetime, timedelta, timezone
 from groq import Groq
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
@@ -64,28 +65,41 @@ def get_latest_menu_image():
 def get_evening_menu_recommendation(image_bytes):
     print("2. Groq AI(Qwen Vision) 저녁 식단 분석 및 추천 중...")
     
+    # 한국 시간(KST) 기준 내일 날짜 구하기
+    kst = timezone(timedelta(hours=9))
+    now_kst = datetime.now(kst)
+    tomorrow_kst = now_kst + timedelta(days=1)
+    
+    today_str = now_kst.strftime("%Y년 %m월 %d일")
+    tomorrow_str = tomorrow_kst.strftime("%m월 %d일")
+    tomorrow_day_kr = ["월", "화", "수", "목", "금", "토", "일"][tomorrow_kst.weekday()]
+
     client = Groq(api_key=GROQ_API_KEY)
     base64_image = base64.b64encode(image_bytes).decode('utf-8')
 
-    prompt = """
+    prompt = f"""
 너는 쌍둥이를 키우는 요리 초보 부모를 돕는 친절하고 실용적인 식단 관리 AI 도우미야.
-전달받은 어린이집 식단표 이미지에서 [내일일자 점심 메뉴]와 [오후 간식]을 분석해줘.
 
-다음 고려사항을 엄격히 적용해서 내일 저녁으로 준비할 추천 식단을 작성해줘:
+[현재 기준 정보]
+• 오늘 날짜: {today_str}
+• 분석할 내일 날짜: **{tomorrow_str}({tomorrow_day_kr})**
 
-[저녁 식단 추천 6대 원칙]
+전달받은 어린이집 식단표 이미지에서 **{tomorrow_str}({tomorrow_day_kr})** 칸을 찾아 [점심 메뉴]와 [오후 간식]을 분석하고, 내일 저녁으로 준비할 추천 식단을 작성해줘.
+
+⚠️ [최우선 절대 규칙]
+1. 이미지 분석 과정, 추론 단계, 생각하는 과정 등 서론 및 혼잣말은 절대로 출력하지 마!
+2. 아래 [출력 형식]에 작성된 템플릿 그대로만 결과물을 출력해라.
+
+[저녁 식단 추천 원칙]
 1. 점심/간식 중복 절대 제외: 어린이집 점심 및 간식에 나온 주재료, 국 종류, 메인 요리와 중복되지 않을 것.
-2. 조리 편의성 극대화: 요리 초보자이고 쌍둥이 육아로 시간이 부족하므로 15~20분 내로 쉽게 조리할 수 있는 메뉴일 것.
-3. 보통의 재료 활용: 대형마트나 집 앞 슈퍼에서 쉽게 구하는 일반적인 식재료 사용할 것.
-4. 아이들 선호도 최고 메뉴: 유아/어린이가 호불호 없이 잘 먹기로 검증된 메뉴.
-5. 냉동/반가공품 적극 활용 OK: 돈가스, 냉동 떡갈비, 시판 소스, 만두 등 냉동제품/밀키트 활용 레시피 적극 환영.
-6. 실제 참고 URL 첨부: 추천한 메뉴를 쉽게 따라 할 수 있는 유튜브 영상 링크나 네이버 블로그 링크를 첨부할 것.
-7. 어른 연계 가능성(선택): 아이용으로 먼저 조리 후 고춧가루/청양고추/스리라차 등 어른용 고명을 추가해 함께 먹을 수 있다면 팁으로 첨부.
+2. 조리 편의성 극대화: 15~20분 내로 쉽게 조리할 수 있는 메뉴일 것.
+3. 선호도 최고 메뉴: 유아/어린이가 호불호 없이 잘 먹는 메뉴.
+4. 냉동/반가공품 적극 활용 OK: 돈가스, 떡갈비, 만두 등 활용 레시피 환영.
 
 [출력 형식]
-📍 내일 어린이집 점심/간식
-• 점심: (식단표 메뉴)
-• 간식: (식단표 간식)
+📍 내일({tomorrow_str} {tomorrow_day_kr}) 어린이집 식단
+• 점심: (식단표 점심 메뉴)
+• 간식: (식단표 간식 메뉴)
 
 💡 추천 저녁 메뉴: [메뉴 이름]
 • 이유: 점심/간식과 겹치지 않고 아이들이 좋아하는 성공 보장 메뉴!
@@ -93,9 +107,10 @@ def get_evening_menu_recommendation(image_bytes):
 • 초간단 조리 팁 (15분 컷):
   1. ...
   2. ...
+
 🎬 추천 레시피 참고:
-• 📺 유튜브: (유튜브 링크)
-• 📝 블로그: (블로그 링크)
+• 📺 유튜브: (유튜브 검색어 또는 관련 링크)
+• 📝 블로그: (블로그 검색어 또는 관련 링크)
 
 👨‍👩‍👧‍👦 어른을 위한 한 끗 팁: (어른용 양념 추가 팁)
 """
@@ -118,7 +133,7 @@ def get_evening_menu_recommendation(image_bytes):
                         ],
                     }
                 ],
-                temperature=0.2,
+                temperature=0.1,
                 max_tokens=1024,
             )
             return completion.choices[0].message.content
@@ -130,7 +145,7 @@ def get_evening_menu_recommendation(image_bytes):
                 raise e
 
 # ==========================================
-# 4. 카카오톡 메시지 보내기 (안정화 적용)
+# 4. 카카오톡 메시지 보내기
 # ==========================================
 def get_kakao_access_token():
     url = "https://kauth.kakao.com/oauth/token"
@@ -156,7 +171,6 @@ def send_kakao_message(text_message):
         "Content-Type": "application/x-www-form-urlencoded"
     }
     
-    # JSON 인코딩 안정성을 위해 json.dumps 사용
     template_object = {
         "object_type": "text",
         "text": text_message,
