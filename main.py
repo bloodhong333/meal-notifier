@@ -103,7 +103,7 @@ def get_evening_menu_recommendation(image_bytes):
     for attempt in range(3):
         try:
             completion = client.chat.completions.create(
-                model="llama-3.2-90b-vision-instruct",
+                model="qwen/qwen3.6-27b",
                 messages=[
                     {
                         "role": "user",
