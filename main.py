@@ -10,7 +10,7 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 
 # ==========================================
-# 1. 환경 변수 설정 (등록하신 Secrets 이름과 동일)
+# 1. 환경 변수 설정
 # ==========================================
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 GOOGLE_DRIVE_FOLDER_ID = os.environ.get("GOOGLE_DRIVE_FOLDER_ID")
@@ -24,14 +24,15 @@ KAKAO_REFRESH_TOKEN = os.environ.get("KAKAO_REFRESH_TOKEN")
 def get_latest_menu_image():
     print("1. 구글 드라이브에서 최신 식단표 이미지 다운로드 중...")
     
-    # 서비스 계정 JSON 문자열 로드
+    if not GOOGLE_SERVICE_ACCOUNT_JSON:
+        raise Exception("GOOGLE_SERVICE_ACCOUNT_JSON 환경변수가 설정되지 않았습니다.")
+
     service_account_info = json.loads(GOOGLE_SERVICE_ACCOUNT_JSON)
     scopes = ['https://www.googleapis.com/auth/drive.readonly']
     creds = Credentials.from_service_account_info(service_account_info, scopes=scopes)
     
     service = build('drive', 'v3', credentials=creds)
 
-    # 폴더 내 이미지 파일 검색 (최신순 1개)
     query = f"'{GOOGLE_DRIVE_FOLDER_ID}' in parents and mimeType contains 'image/' and trashed = false"
     results = service.files().list(
         q=query,
@@ -48,7 +49,6 @@ def get_latest_menu_image():
     file_name = items[0]['name']
     print(f"   ➔ 찾은 파일: {file_name}")
 
-    # 이미지 다운로드
     request = service.files().get_media(fileId=file_id)
     fh = io.BytesIO()
     downloader = MediaIoBaseDownload(fh, request)
@@ -59,10 +59,10 @@ def get_latest_menu_image():
     return fh.getvalue()
 
 # ==========================================
-# 3. Groq AI (Llama 3.2 Vision) 식단 분석 및 추천
+# 3. Groq AI (Qwen Vision) 식단 분석 및 추천
 # ==========================================
 def get_evening_menu_recommendation(image_bytes):
-    print("2. Groq AI(Llama 3.2 Vision) 저녁 식단 분석 및 추천 중...")
+    print("2. Groq AI(Qwen Vision) 저녁 식단 분석 및 추천 중...")
     
     client = Groq(api_key=GROQ_API_KEY)
     base64_image = base64.b64encode(image_bytes).decode('utf-8')
@@ -124,16 +124,15 @@ def get_evening_menu_recommendation(image_bytes):
             return completion.choices[0].message.content
         except Exception as e:
             if attempt < 2:
-                print(f"⚠️ API 요청 중 오류 발생. 10초 후 재시도합니다... ({attempt + 1}/3)")
+                print(f"⚠️ API 요청 중 오류 발생 ({e}). 10초 후 재시도합니다... ({attempt + 1}/3)")
                 time.sleep(10)
             else:
                 raise e
 
 # ==========================================
-# 4. 카카오톡 액세스 토큰 갱신 및 메시지 발송
+# 4. 카카오톡 메시지 보내기 (안정화 적용)
 # ==========================================
 def get_kakao_access_token():
-    """리프레시 토큰으로 새로운 액세스 토큰을 발급받습니다."""
     url = "https://kauth.kakao.com/oauth/token"
     data = {
         "grant_type": "refresh_token",
@@ -153,18 +152,22 @@ def send_kakao_message(text_message):
     access_token = get_kakao_access_token()
     url = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
     headers = {
-        "Authorization": f"Bearer {access_token}"
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/x-www-form-urlencoded"
+    }
+    
+    # JSON 인코딩 안정성을 위해 json.dumps 사용
+    template_object = {
+        "object_type": "text",
+        "text": text_message,
+        "link": {
+            "web_url": "https://www.google.com",
+            "mobile_web_url": "https://www.google.com"
+        }
     }
     
     payload = {
-        "template_object": f"""{{
-            "object_type": "text",
-            "text": {json.dumps(text_message, ensure_ascii=False)},
-            "link": {{
-                "web_url": "https://www.google.com",
-                "mobile_web_url": "https://www.google.com"
-            }}
-        }}"""
+        "template_object": json.dumps(template_object, ensure_ascii=False)
     }
     
     response = requests.post(url, headers=headers, data=payload)
