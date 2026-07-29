@@ -1,62 +1,85 @@
 import os
-import json
-import requests
 import io
 import time
-from google.oauth2 import service_account
+import base64
+import requests
+from groq import Groq
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
-from google.genai.errors import APIError
-
-# 최신 구글 AI SDK 사용
-from google import genai
-from google.genai import types
 
 # ==========================================
 # 1. 환경 변수 설정
 # ==========================================
-GOOGLE_SERVICE_ACCOUNT_JSON = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
-GOOGLE_DRIVE_FOLDER_ID = os.environ.get("GOOGLE_DRIVE_FOLDER_ID")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-KAKAO_REST_API_KEY = os.environ.get("KAKAO_REST_API_KEY")
-KAKAO_REFRESH_TOKEN = os.environ.get("KAKAO_REFRESH_TOKEN")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+KAKAO_ACCESS_TOKEN = os.environ.get("KAKAO_ACCESS_TOKEN")
+GOOGLE_REFRESH_TOKEN = os.environ.get("GOOGLE_REFRESH_TOKEN")
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
+DRIVE_FOLDER_ID = os.environ.get("DRIVE_FOLDER_ID")  # 구글 드라이브 식단표 폴더 ID
 
 # ==========================================
-# 2. 구글 드라이브에서 최신 식단표 이미지 다운로드
+# 2. Google Drive에서 식단표 이미지 다운로드
 # ==========================================
-def download_latest_menu_image():
-    info = json.loads(GOOGLE_SERVICE_ACCOUNT_JSON)
-    creds = service_account.Credentials.from_service_account_info(
-        info, scopes=['https://www.googleapis.com/auth/drive.readonly']
+def get_latest_menu_image():
+    """
+    Google Drive API를 사용하여 특정 폴더 내 가장 최근 추가된 식단표 이미지를 가져옵니다.
+    """
+    print("1. 구글 드라이브에서 최신 식단표 이미지 다운로드 중...")
+    
+    creds = Credentials(
+        token=None,
+        refresh_token=GOOGLE_REFRESH_TOKEN,
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=GOOGLE_CLIENT_ID,
+        client_secret=GOOGLE_CLIENT_SECRET
     )
+    
+    if not creds.valid and creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+
     service = build('drive', 'v3', credentials=creds)
 
-    query = f"'{GOOGLE_DRIVE_FOLDER_ID}' in parents and mimeType contains 'image/' and trashed = false"
+    # 폴더 내 이미지 파일 검색 (최신순 1개)
+    query = f"'{DRIVE_FOLDER_ID}' in parents and mimeType contains 'image/' and trashed = false"
     results = service.files().list(
-        q=query, orderBy="modifiedTime desc", pageSize=1, fields="files(id, name)"
+        q=query,
+        orderBy="createdTime desc",
+        pageSize=1,
+        fields="files(id, name)"
     ).execute()
+    
     items = results.get('files', [])
-
     if not items:
-        raise FileNotFoundError("구글 드라이브 폴더에서 식단표 이미지를 찾을 수 없습니다.")
+        raise Exception("구글 드라이브 폴더에서 식단표 이미지를 찾을 수 없습니다.")
 
     file_id = items[0]['id']
+    file_name = items[0]['name']
+    print(f"   ➔ 찾은 파일: {file_name}")
+
+    # 이미지 다운로드
     request = service.files().get_media(fileId=file_id)
-    file_stream = io.BytesIO()
-    downloader = MediaIoBaseDownload(file_stream, request)
+    fh = io.BytesIO()
+    downloader = MediaIoBaseDownload(fh, request)
     done = False
     while not done:
         _, done = downloader.next_chunk()
-
-    file_stream.seek(0)
-    return file_stream.read()
+        
+    return fh.getvalue()
 
 # ==========================================
-# 3. Gemini AI 식단 분석 및 저녁 메뉴 추천
+# 3. Groq AI (Llama 3.2 Vision) 식단 분석 및 추천
 # ==========================================
 def get_evening_menu_recommendation(image_bytes):
-    # 최신 SDK 방식으로 클라이언트 생성
-    client = genai.Client(api_key=GEMINI_API_KEY)
+    """
+    Groq API를 사용하여 식단표 이미지를 분석하고 저녁 메뉴를 추천합니다.
+    """
+    print("2. Groq AI(Llama 3.2 Vision) 저녁 식단 분석 및 추천 중...")
+    
+    client = Groq(api_key=GROQ_API_KEY)
+    base64_image = base64.b64encode(image_bytes).decode('utf-8')
 
     prompt = """
 너는 쌍둥이를 키우는 요리 초보 부모를 돕는 친절하고 실용적인 식단 관리 AI 도우미야.
@@ -91,64 +114,83 @@ def get_evening_menu_recommendation(image_bytes):
 👨‍👩‍👧‍👦 어른을 위한 한 끗 팁: (어른용 양념 추가 팁)
 """
 
-    # 이미지 파트 포맷 변환
-    image_part = types.Part.from_bytes(
-        data=image_bytes,
-        mime_type="image/jpeg",
-    )
-
     for attempt in range(3):
         try:
-            response = client.models.generate_content(
-                model="gemini-2.0-flash-lite",
-                contents=[prompt, image_part],
+            completion = client.chat.completions.create(
+                model="llama-3.2-11b-vision-instruct",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt},
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/jpeg;base64,{base64_image}",
+                                },
+                            },
+                        ],
+                    }
+                ],
+                temperature=0.2,
+                max_tokens=1024,
             )
-            return response.text
-        except APIError as e:
-            if "429" in str(e) and attempt < 2:
-                print(f"⚠️ API 요청 제한(429) 발생. 30초 후 재시도합니다... ({attempt + 1}/3)")
-                time.sleep(30)
+            return completion.choices[0].message.content
+        except Exception as e:
+            if attempt < 2:
+                print(f"⚠️ API 요청 중 오류 발생. 10초 후 재시도합니다... ({attempt + 1}/3)")
+                time.sleep(10)
             else:
                 raise e
-                
-    return response.text
 
 # ==========================================
 # 4. 카카오톡 나에게 메시지 보내기
 # ==========================================
-def send_kakao_message(text):
-    token_url = "https://kauth.kakao.com/oauth/token"
-    token_data = {
-        "grant_type": "refresh_token",
-        "client_id": KAKAO_REST_API_KEY,
-        "refresh_token": KAKAO_REFRESH_TOKEN
+def send_kakao_message(text_message):
+    """
+    카카오톡 나에게 보내기 API를 이용해 최종 분석된 저녁 추천 메시지를 전송합니다.
+    """
+    print("3. 카카오톡 메시지 전송 중...")
+    
+    url = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
+    headers = {
+        "Authorization": f"Bearer {KAKAO_ACCESS_TOKEN}"
     }
-    token_res = requests.post(token_url, data=token_data).json()
-    access_token = token_res.get("access_token")
-
-    send_url = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
-    headers = {"Authorization": f"Bearer {access_token}"}
+    
     payload = {
-        "template_object": json.dumps({
+        "template_object": f"""{{
             "object_type": "text",
-            "text": text,
-            "link": {
-                "web_url": "https://aistudio.google.com",
-                "mobile_web_url": "https://aistudio.google.com"
-            },
-            "button_title": "자세히 보기"
-        })
+            "text": {repr(text_message)},
+            "link": {{
+                "web_url": "https://www.google.com",
+                "mobile_web_url": "https://www.google.com"
+            }}
+        }}"""
     }
-    res = requests.post(send_url, headers=headers, data=payload)
-    return res.json()
+    
+    response = requests.post(url, headers=headers, data=payload)
+    if response.status_code == 200:
+        print("✅ 카카오톡 메시지 전송 성공!")
+    else:
+        print(f"❌ 카카오톡 전송 실패 ({response.status_code}): {response.text}")
 
+# ==========================================
+# 5. 메인 실행 함수
+# ==========================================
 if __name__ == "__main__":
-    print("1. 식단표 이미지 다운로드 중...")
-    img_data = download_latest_menu_image()
-    
-    print("2. Gemini AI 저녁 식단 분석 및 추천 중...")
-    recommendation = get_evening_menu_recommendation(img_data)
-    
-    print("3. 카카오톡 메시지 발송 중...")
-    send_kakao_message(recommendation)
-    print("완료되었습니다!")
+    try:
+        # 1. 드라이브에서 식단표 이미지 가져오기
+        img_data = get_latest_menu_image()
+        
+        # 2. AI 식단 추천 받아오기
+        recommendation = get_evening_menu_recommendation(img_data)
+        print("\n--- [AI 추천 결과] ---")
+        print(recommendation)
+        print("----------------------\n")
+        
+        # 3. 카카오톡으로 전송하기
+        send_kakao_message(recommendation)
+        
+    except Exception as e:
+        print(f"❌ 오류 발생: {e}")
+        exit(1)
