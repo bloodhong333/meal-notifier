@@ -134,7 +134,7 @@ def get_evening_menu_recommendation(image_bytes):
 """
 
     response = client.models.generate_content(
-        model="gemini-2.5-flash",  # Gemini 모델명
+        model="gemini-3.6-flash",  # Gemini 모델명
         contents=[
             types.Part.from_bytes(
                 data=image_bytes,
