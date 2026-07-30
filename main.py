@@ -186,3 +186,5 @@ if __name__ == "__main__":
 
     # 3. 텔레그램 채널로 전송
     send_telegram_message(recommendation_msg)
+
+# 자동 실행 테스트용 커밋
