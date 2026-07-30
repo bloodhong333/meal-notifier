@@ -1,18 +1,75 @@
+import io
+import json
 import os
 import time
 from datetime import datetime, timedelta, timezone
+from google.api_core.exceptions import GoogleAPIError
 import google.genai as genai
 from google.genai import types
+from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseDownload
 import requests
 
 # 환경 변수 로드
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+GOOGLE_SERVICE_ACCOUNT_JSON = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
 
 
 # ==========================================
-# 1. Gemini AI 저녁 식단 분석 및 추천
+# 1. 구글 드라이브 최신 식단표 이미지 다운로드
+# ==========================================
+def download_latest_menu_image():
+    print("1. 구글 드라이브에서 최신 식단표 이미지 다운로드 중...")
+
+    # 구글 서비스 계정 인증
+    service_account_info = json.loads(GOOGLE_SERVICE_ACCOUNT_JSON)
+    credentials = Credentials.from_service_account_info(
+        service_account_info,
+        scopes=["https://www.googleapis.com/auth/drive.readonly"],
+    )
+    drive_service = build("drive", "v3", credentials=credentials)
+
+    # 이미지 파일 검색 (jpg, jpeg, png)
+    query = "mimeType contains 'image/' and trashed = false"
+    results = (
+        drive_service.files()
+        .list(
+            q=query,
+            orderBy="createdTime desc",
+            pageSize=1,
+            fields="files(id, name)",
+        )
+        .execute()
+    )
+
+    files = results.get("files", [])
+
+    if not files:
+        raise FileNotFoundError(
+            "구글 드라이브에서 식단표 이미지 파일을 찾을 수 없습니다."
+        )
+
+    latest_file = files[0]
+    file_id = latest_file["id"]
+    print(f"   ➔ 찾은 파일: {latest_file['name']}")
+
+    # 파일 다운로드 (메모리로 바로 다운로드)
+    request = drive_service.files().get_media(fileId=file_id)
+    image_stream = io.BytesIO()
+    downloader = MediaIoBaseDownload(image_stream, request)
+
+    done = False
+    while not done:
+        _, done = downloader.next_chunk()
+
+    return image_stream.getvalue()
+
+
+# ==========================================
+# 2. Gemini AI 저녁 식단 분석 및 추천
 # ==========================================
 def get_evening_menu_recommendation(image_bytes):
     print("2. Gemini AI 저녁 식단 분석 및 추천 중...")
@@ -29,7 +86,6 @@ def get_evening_menu_recommendation(image_bytes):
 
     client = genai.Client(api_key=GEMINI_API_KEY)
 
-    # 텔레그램은 4,000자 이상 지원하므로 split 처리 없이 하나로 요청
     prompt = f"""
 식단표 이미지에서 **{tomorrow_day_num}일({tomorrow_day_kr})** 칸의 [오전 간식], [점심], [오후 간식] 메뉴를 정확히 읽고, 아래 [저녁 식단 추천 원칙]에 맞춰 저녁 추천 메시지를 작성해줘.
 
@@ -90,7 +146,7 @@ def get_evening_menu_recommendation(image_bytes):
 
 
 # ==========================================
-# 2. 텔레그램 채널 메시지 전송
+# 3. 텔레그램 채널 메시지 전송
 # ==========================================
 def send_telegram_message(message):
     print("3. 텔레그램 채널로 메시지 전송 중...")
@@ -99,7 +155,7 @@ def send_telegram_message(message):
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
         "text": message,
-        "parse_mode": "Markdown",  # 볼드체(**) 등 마크다운 양식 적용
+        "parse_mode": "Markdown",
     }
 
     response = requests.post(url, json=payload)
@@ -107,7 +163,6 @@ def send_telegram_message(message):
     if response.status_code == 200:
         print("✅ 텔레그램 채널 전송 성공!")
     else:
-        # 마크다운 파싱 에러 방지를 위해 실패 시 일반 텍스트로 재시도
         print(
             f"⚠️ 마크다운 전송 실패({response.status_code}), 일반 텍스트로 재시도..."
         )
@@ -123,14 +178,11 @@ def send_telegram_message(message):
 # 메인 실행 흐름
 # ==========================================
 if __name__ == "__main__":
-    # 1. 구글 드라이브 식단표 이미지 다운로드 (기존 함수 호출)
+    # 1. 구글 드라이브 식단표 이미지 다운로드
     image_bytes = download_latest_menu_image()
 
     # 2. Gemini AI 추천 메시지 생성
     recommendation_msg = get_evening_menu_recommendation(image_bytes)
-
-
-    # 자동 실행 테스트용 커밋
 
     # 3. 텔레그램 채널로 전송
     send_telegram_message(recommendation_msg)
