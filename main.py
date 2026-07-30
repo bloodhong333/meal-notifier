@@ -129,5 +129,8 @@ if __name__ == "__main__":
     # 2. Gemini AI 추천 메시지 생성
     recommendation_msg = get_evening_menu_recommendation(image_bytes)
 
+
+    # 자동 실행 테스트용 커밋
+
     # 3. 텔레그램 채널로 전송
     send_telegram_message(recommendation_msg)
