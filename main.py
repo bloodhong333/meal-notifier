@@ -2,12 +2,14 @@ import io
 import json
 import os
 import requests
+import time
 from datetime import datetime, timedelta, timezone
 from google import genai
 from google.genai import types
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
+from google.api_core.exceptions import GoogleAPIError
 
 # ==========================================
 # 1. 환경 변수 설정
@@ -132,23 +134,35 @@ def get_evening_menu_recommendation(image_bytes):
 • 블로그: (추천 메뉴 + 유아식 레시피 검색어)
 """
 
-    # 공식 지원 모델인 gemini-2.0-flash 사용
-    response = client.models.generate_content(
-        model="gemini-3.6-flash",
-        contents=[
-            types.Part.from_bytes(
-                data=image_bytes,
-                mime_type="image/jpeg",
-            ),
-            prompt,
-        ],
-        config=types.GenerateContentConfig(
-            max_output_tokens=2000, temperature=0.2
-        ),
-    )
-
-    return response.text
-
+    # 🔄 최대 3번 재시도하는 로직
+    max_retries = 3
+    for attempt in range(1, max_retries + 1):
+        try:
+            print(f"Gemini API 호출 시도 ({attempt}/{max_retries})...")
+            response = client.models.generate_content(
+                model="gemini-3.6-flash",
+                contents=[
+                    types.Part.from_bytes(
+                        data=image_bytes,
+                        mime_type="image/jpeg",
+                    ),
+                    prompt,
+                ],
+                config=types.GenerateContentConfig(
+                    max_output_tokens=2000,
+                ),
+            )
+            return response.text
+        except Exception as e:
+            print(f"⚠️ Gemini API 호출 중 오류 발생: {e}")
+            if attempt < max_retries:
+                sleep_time = attempt * 5  # 5초, 10초 대기 후 재시도
+                print(f"{sleep_time}초 후 다시 시도합니다...")
+                time.sleep(sleep_time)
+            else:
+                raise e  # 3번 모두 실패하면 최종 에러 발생#
+        
+    
 
 # ==========================================
 # 4. 카카오톡 메시지 전송 (2명 전송 로직)
