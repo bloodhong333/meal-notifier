@@ -2,9 +2,8 @@ name: Daily Evening Menu Recommendation
 
 on:
   schedule:
-    # UTC 기준 12:00 = KST(한국시간) 21:00 (저녁 9시)
-    # 요일: 0(일), 1(월), 2(화), 3(수), 4(목) 실행 (금, 토 제외)
-    - cron: '0 10 * * *'
+    # UTC 11:37 = KST(한국시간) 20:37 (저녁 8시 37분)
+    - cron: '37 11 * * *'
   workflow_dispatch: # 수동 실행 버튼 추가
 
 jobs:
