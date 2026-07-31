@@ -132,7 +132,7 @@ def get_evening_menu_recommendation(image_bytes):
                     ),
                     prompt,
                 ],
-                config=types.GenerateContentConfig(max_output_tokens=2000),
+                config=types.GenerateContentConfig(max_output_tokens=4000),
             )
             return response.text
         except Exception as e:
