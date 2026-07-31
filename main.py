@@ -90,24 +90,24 @@ def get_evening_menu_recommendation(image_bytes):
 너는 어린이집 식단표 분석 전문가이자 유아식 추천 AI야.
 이미지 속 식단표에서 **{tomorrow_day_num}일({tomorrow_day_kr})** 칸의 식단을 찾아서 분석해줘.
 
+⛔ [절대 준수 사항]
+- 너의 내부 생각, 혼잣말, 추론 과정, 영어 설명(예: Wait, Let's look at..., thinking process 등)은 절대로 1자도 출력하지 마.
+- 오직 아래 [출력 양식]에 명시된 텍스트만 최종 출력해.
+
 ⚠️ [주말 및 식단 없음 예외 처리]
-- 만약 식단표에 **{tomorrow_day_num}일({tomorrow_day_kr})** 칸이 없거나(예: 주말/휴일), 내용이 비어있다면 고민하거나 혼잣말을 하지 말고 아래 양식으로만 답변해:
-  📍 **내일({tomorrow_str} {tomorrow_day_kr})은 어린이집 휴원일/주말입니다.**
-  오늘 저녁은 아이가 좋아하는 맛있는 특식을 준비해 보세요! 😋
+- 만약 식단표에 **{tomorrow_day_num}일({tomorrow_day_kr})** 칸이 없거나(예: 주말/휴일/월이 넘어가서 없는 날짜), 내용이 비어있다면 다른 날짜를 억지로 찾지 말고 아래 양식으로만 답변해:
+📍 **내일({tomorrow_str} {tomorrow_day_kr})은 어린이집 휴원일/주말입니다.**
+오늘 저녁은 아이가 좋아하는 맛있는 특식을 준비해 보세요! 😋
 
 ---
 
-만약 **{tomorrow_day_num}일({tomorrow_day_kr})** 식단이 존재한다면, 아래 원칙에 맞춰 추천 메시지를 작성해줘.
+만약 **{tomorrow_day_num}일({tomorrow_day_kr})** 식단이 식단표 이미지에 존재한다면, 아래 원칙에 맞춰 저녁 추천 메시지를 작성해줘.
 
 🎯 [저녁 식단 추천 원칙]
 1. 메뉴 중복 철저 방지: 아침/점심/간식과 중복되지 않는 유아식 메뉴 선별.
 2. 초간단 조리 (15~20분 컷): 요리 초보 부모도 빠르게 준비 가능한 간단 식단.
 3. 시판/밀키트 적극 활용: 시판 냉동식품, 밀키트, 반가공품 활용 조리 팁 제공.
 4. 소화 및 수면 고려: 밤에 자극적인 메뉴 제외.
-
-⚠️ [중요 출력 규칙]
-- 너의 내부 생각 과정, 추론, 혼잣말(Wait, Let's look at..., 영어 설명 등)은 절대로 출력하지 마.
-- 오직 아래 [출력 양식] 그대로 최종 결과물만 출력해.
 
 [출력 양식]
 📍 **내일({tomorrow_str} {tomorrow_day_kr}) 어린이집 식단**
@@ -139,10 +139,8 @@ def get_evening_menu_recommendation(image_bytes):
                     prompt,
                 ],
                 config=types.GenerateContentConfig(
-                    max_output_tokens=3000,
-                    thinking_config=types.ThinkingConfig(
-                        thinking_budget=0
-                    ),  # 👈 생각(Thinking) 과정이 출력에 포함되지 않도록 차단
+                    max_output_tokens=3000
+                    # thinking_config 옵션 제거
                 ),
             )
             return response.text
